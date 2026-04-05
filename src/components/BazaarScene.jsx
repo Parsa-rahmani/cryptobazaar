@@ -298,7 +298,7 @@ function StallRing({ chains, onStallClick }) {
           <Stall
             key={chain.id}
             position={[x, 0, z]}
-            rotation={[0, angle + Math.PI, 0]}
+            rotation={[0, angle, 0]}
             color={chain.color}
             chain={chain}
             onStallClick={onStallClick}
