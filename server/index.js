@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const MOCK_TOKENS = require('./mockData');
 
 const app = express();
 const PORT = 3001;
@@ -15,8 +16,11 @@ app.get('/api/tokens', async (req, res) => {
   }
 
   const apiKey = process.env.DEBANK_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'DEBANK_API_KEY not configured' });
+
+  // If no API key or key is placeholder, return mock data
+  if (!apiKey || apiKey === 'your_key_here') {
+    console.log(`[mock] Returning demo data for ${address}`);
+    return res.json(MOCK_TOKENS);
   }
 
   try {
@@ -39,4 +43,7 @@ app.get('/api/tokens', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Crypto Bazaar proxy server running on http://localhost:${PORT}`);
+  if (!process.env.DEBANK_API_KEY || process.env.DEBANK_API_KEY === 'your_key_here') {
+    console.log('⚡ Running in DEMO MODE (mock data). Set DEBANK_API_KEY in .env for real data.');
+  }
 });
