@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, Sky, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import Stall from '../scene/Stall';
 import './TokenPanel.css';
@@ -31,21 +31,80 @@ const PITCH_MAX = 0.4;
 const BOUNDARY_RADIUS = 10;
 
 /* ═══════════════════════════════════════════════════════════════════
-   1. GROUND — cobblestone textured plane
+   1. GROUND — procedural cobblestone texture
    ═══════════════════════════════════════════════════════════════════ */
-function Ground() {
-  const texture = useLoader(
-    THREE.TextureLoader,
-    'https://threejs.org/examples/textures/hardwood2_diffuse.jpg'
-  );
+function makeCobblestoneTexture() {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
 
-  const cobblestone = useMemo(() => {
-    const tex = texture.clone();
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(20, 20);
-    tex.needsUpdate = true;
-    return tex;
-  }, [texture]);
+  // Base mortar color
+  ctx.fillStyle = '#3A332A';
+  ctx.fillRect(0, 0, size, size);
+
+  // Draw irregular stones in a grid with jitter
+  const cols = 8;
+  const rows = 8;
+  const cellW = size / cols;
+  const cellH = size / rows;
+  const stoneColors = ['#6B6357', '#7A7060', '#5C5549', '#847B6E', '#6E665A', '#79705F', '#635C50', '#8A8070'];
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const jx = (Math.random() - 0.5) * 6;
+      const jy = (Math.random() - 0.5) * 6;
+      const pad = 3 + Math.random() * 2;
+      const x = c * cellW + pad + jx;
+      const y = r * cellH + pad + jy;
+      const w = cellW - pad * 2 + (Math.random() - 0.5) * 8;
+      const h = cellH - pad * 2 + (Math.random() - 0.5) * 8;
+
+      const color = stoneColors[(r * cols + c) % stoneColors.length];
+      ctx.fillStyle = color;
+
+      // Rounded rect for each stone
+      const radius = 4 + Math.random() * 4;
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + w - radius, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+      ctx.lineTo(x + w, y + h - radius);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+      ctx.lineTo(x + radius, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+      ctx.fill();
+
+      // Subtle highlight on top edge
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y + 1);
+      ctx.lineTo(x + w - radius, y + 1);
+      ctx.stroke();
+
+      // Shadow on bottom edge
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y + h - 1);
+      ctx.lineTo(x + w - radius, y + h - 1);
+      ctx.stroke();
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(10, 10);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function Ground() {
+  const cobblestone = useMemo(() => makeCobblestoneTexture(), []);
 
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -60,45 +119,31 @@ function Ground() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   2. SKY DOME — warm dusk gradient via ShaderMaterial
+   2. SKY — drei Sky (dusk sun) + Stars
    ═══════════════════════════════════════════════════════════════════ */
-const skyVertexShader = `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const skyFragmentShader = `
-  uniform vec3 skyColor;
-  uniform vec3 horizonColor;
-  varying vec2 vUv;
-  void main() {
-    vec3 col = mix(horizonColor, skyColor, vUv.y);
-    gl_FragColor = vec4(col, 1.0);
-  }
-`;
-
-function SkyDome() {
-  const uniforms = useMemo(
-    () => ({
-      skyColor: { value: new THREE.Color('#1a0a2e') },
-      horizonColor: { value: new THREE.Color('#8B3A0F') },
-    }),
-    []
-  );
-
+function DuskSky() {
   return (
-    <mesh scale={[-1, 1, 1]}>
-      <sphereGeometry args={[80, 64, 32]} />
-      <shaderMaterial
-        vertexShader={skyVertexShader}
-        fragmentShader={skyFragmentShader}
-        uniforms={uniforms}
-        side={THREE.BackSide}
+    <>
+      <Sky
+        distance={450000}
+        sunPosition={[100, 5, -100]}
+        inclination={0.05}
+        azimuth={0.25}
+        turbidity={10}
+        rayleigh={2}
+        mieCoefficient={0.005}
+        mieDirectionalG={0.8}
       />
-    </mesh>
+      <Stars
+        radius={80}
+        depth={50}
+        count={2000}
+        factor={4}
+        saturation={0}
+        fade
+        speed={0.5}
+      />
+    </>
   );
 }
 
@@ -163,10 +208,83 @@ function Torches() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   5. BUILDING FACADES — 12 silhouettes around the perimeter
+   5. BUILDING FACADES — medieval timber-frame houses around perimeter
    ═══════════════════════════════════════════════════════════════════ */
 const FACADE_COUNT = 12;
 const FACADE_RADIUS = 18;
+
+/* Single medieval building: plaster wall + dark timber beams + roof */
+function MedievalBuilding({ height, width }) {
+  const roofHeight = 1.2;
+  const wallColor = useMemo(() => {
+    const colors = ['#C4A86B', '#B89B5E', '#D4B87A', '#A8905A', '#CFAD6A'];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }, []);
+
+  return (
+    <group>
+      {/* Main wall — plaster / stucco */}
+      <mesh position={[0, height / 2, 0]}>
+        <boxGeometry args={[width, height, 0.6]} />
+        <meshStandardMaterial color={wallColor} roughness={0.9} />
+      </mesh>
+
+      {/* Horizontal timber beam — bottom */}
+      <mesh position={[0, 0.15, 0.31]}>
+        <boxGeometry args={[width + 0.1, 0.12, 0.08]} />
+        <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
+      </mesh>
+
+      {/* Horizontal timber beam — middle */}
+      <mesh position={[0, height * 0.5, 0.31]}>
+        <boxGeometry args={[width + 0.1, 0.12, 0.08]} />
+        <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
+      </mesh>
+
+      {/* Horizontal timber beam — top */}
+      <mesh position={[0, height - 0.1, 0.31]}>
+        <boxGeometry args={[width + 0.1, 0.12, 0.08]} />
+        <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
+      </mesh>
+
+      {/* Vertical timber beam — left */}
+      <mesh position={[-width / 2 + 0.06, height / 2, 0.31]}>
+        <boxGeometry args={[0.1, height, 0.08]} />
+        <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
+      </mesh>
+
+      {/* Vertical timber beam — right */}
+      <mesh position={[width / 2 - 0.06, height / 2, 0.31]}>
+        <boxGeometry args={[0.1, height, 0.08]} />
+        <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
+      </mesh>
+
+      {/* Vertical timber beam — center */}
+      <mesh position={[0, height / 2, 0.31]}>
+        <boxGeometry args={[0.1, height, 0.08]} />
+        <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
+      </mesh>
+
+      {/* Window — dark opening (left) */}
+      <mesh position={[-width * 0.25, height * 0.55, 0.35]}>
+        <boxGeometry args={[0.5, 0.6, 0.05]} />
+        <meshStandardMaterial color="#0A0805" roughness={1} />
+      </mesh>
+
+      {/* Window — dark opening (right) */}
+      <mesh position={[width * 0.25, height * 0.55, 0.35]}>
+        <boxGeometry args={[0.5, 0.6, 0.05]} />
+        <meshStandardMaterial color="#0A0805" roughness={1} />
+      </mesh>
+
+      {/* Pitched roof */}
+      <mesh position={[0, height + roofHeight / 2 - 0.1, 0]} rotation={[0, 0, 0]}>
+        <coneGeometry args={[width / 1.4, roofHeight, 4]} />
+        <meshStandardMaterial color="#5C2E0E" roughness={0.85} />
+      </mesh>
+    </group>
+  );
+}
 
 function BuildingFacades() {
   const facades = useMemo(() => {
@@ -174,25 +292,25 @@ function BuildingFacades() {
     for (let i = 0; i < FACADE_COUNT; i++) {
       const angle = (i / FACADE_COUNT) * Math.PI * 2;
       const height = 4 + Math.random() * 2;
-      out.push({ angle, height });
+      const width = 2.5 + Math.random() * 1.5;
+      out.push({ angle, height, width });
     }
     return out;
   }, []);
 
   return (
     <>
-      {facades.map(({ angle, height }, i) => {
+      {facades.map(({ angle, height, width }, i) => {
         const x = Math.sin(angle) * FACADE_RADIUS;
         const z = Math.cos(angle) * FACADE_RADIUS;
         return (
-          <mesh
+          <group
             key={i}
-            position={[x, height / 2, z]}
+            position={[x, 0, z]}
             rotation={[0, angle + Math.PI, 0]}
           >
-            <boxGeometry args={[3, height, 0.5]} />
-            <meshStandardMaterial color="#2A1F14" roughness={0.95} />
-          </mesh>
+            <MedievalBuilding height={height} width={width} />
+          </group>
         );
       })}
     </>
@@ -336,7 +454,7 @@ function SceneContents({ chains, onStallClick, isLocked, isMobile }) {
   return (
     <>
       {/* AMBIENT MOOD — fog, dim ambient, moonlight */}
-      <fog attach="fog" args={['#1A0A07', 8, 20]} />
+      <fog attach="fog" args={['#1A0A07', 12, 35]} />
 
       <ambientLight intensity={0.15} color="#FFF3DC" />
       <directionalLight
@@ -346,7 +464,7 @@ function SceneContents({ chains, onStallClick, isLocked, isMobile }) {
       />
 
       {/* Environment */}
-      <SkyDome />
+      <DuskSky />
       <Ground />
       <Torches />
       <BuildingFacades />
