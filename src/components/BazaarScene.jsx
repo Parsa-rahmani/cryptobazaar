@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Sky, Stars } from '@react-three/drei';
+import { OrbitControls, Sky, Stars, useTexture } from '@react-three/drei';
+import { EffectComposer, SSAO, Bloom, Vignette, HueSaturation, BrightnessContrast } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import Stall from '../scene/Stall';
 import './TokenPanel.css';
@@ -31,88 +32,31 @@ const PITCH_MAX = 0.4;
 const BOUNDARY_RADIUS = 10;
 
 /* ═══════════════════════════════════════════════════════════════════
-   1. GROUND — procedural cobblestone texture
+   1. GROUND — PBR cobblestone texture from polyhaven
    ═══════════════════════════════════════════════════════════════════ */
-function makeCobblestoneTexture() {
-  const size = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-
-  // Base mortar color — dark grey grout
-  ctx.fillStyle = '#4A4A4A';
-  ctx.fillRect(0, 0, size, size);
-
-  // Draw irregular stones in a grid with jitter
-  const cols = 8;
-  const rows = 8;
-  const cellW = size / cols;
-  const cellH = size / rows;
-  const stoneColors = ['#8C8C8C', '#9A9A96', '#7E7E7A', '#A3A39E', '#888884', '#969690', '#7A7A76', '#AEAEA8'];
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const jx = (Math.random() - 0.5) * 6;
-      const jy = (Math.random() - 0.5) * 6;
-      const pad = 3 + Math.random() * 2;
-      const x = c * cellW + pad + jx;
-      const y = r * cellH + pad + jy;
-      const w = cellW - pad * 2 + (Math.random() - 0.5) * 8;
-      const h = cellH - pad * 2 + (Math.random() - 0.5) * 8;
-
-      const color = stoneColors[(r * cols + c) % stoneColors.length];
-      ctx.fillStyle = color;
-
-      // Rounded rect for each stone
-      const radius = 4 + Math.random() * 4;
-      ctx.beginPath();
-      ctx.moveTo(x + radius, y);
-      ctx.lineTo(x + w - radius, y);
-      ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-      ctx.lineTo(x + w, y + h - radius);
-      ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-      ctx.lineTo(x + radius, y + h);
-      ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-      ctx.lineTo(x, y + radius);
-      ctx.quadraticCurveTo(x, y, x + radius, y);
-      ctx.closePath();
-      ctx.fill();
-
-      // Subtle highlight on top edge
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x + radius, y + 1);
-      ctx.lineTo(x + w - radius, y + 1);
-      ctx.stroke();
-
-      // Shadow on bottom edge
-      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-      ctx.beginPath();
-      ctx.moveTo(x + radius, y + h - 1);
-      ctx.lineTo(x + w - radius, y + h - 1);
-      ctx.stroke();
-    }
-  }
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(10, 10);
-  tex.needsUpdate = true;
-  return tex;
-}
+const COBBLE_COLOR = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/cobblestone_floor_04/cobblestone_floor_04_diff_1k.jpg';
+const COBBLE_NORMAL = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/cobblestone_floor_04/cobblestone_floor_04_nor_gl_1k.jpg';
+const COBBLE_ROUGH = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/cobblestone_floor_04/cobblestone_floor_04_rough_1k.jpg';
 
 function Ground() {
-  const cobblestone = useMemo(() => makeCobblestoneTexture(), []);
+  const [colorMap, normalMap, roughnessMap] = useTexture([COBBLE_COLOR, COBBLE_NORMAL, COBBLE_ROUGH]);
+
+  useMemo(() => {
+    [colorMap, normalMap, roughnessMap].forEach((t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(12, 12);
+    });
+  }, [colorMap, normalMap, roughnessMap]);
 
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[60, 60]} />
       <meshStandardMaterial
-        map={cobblestone}
-        roughness={0.95}
-        metalness={0.0}
+        map={colorMap}
+        normalMap={normalMap}
+        roughnessMap={roughnessMap}
+        roughness={1}
+        metalness={0}
       />
     </mesh>
   );
@@ -192,6 +136,8 @@ function Torch({ index }) {
         intensity={2}
         distance={8}
         decay={2}
+        castShadow
+        shadow-mapSize={[1024, 1024]}
       />
     </group>
   );
@@ -213,54 +159,71 @@ function Torches() {
 const FACADE_COUNT = 12;
 const FACADE_RADIUS = 18;
 
-/* Single medieval building: plaster wall + dark timber beams + roof */
+const STONE_COLOR = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/castle_brick_07/castle_brick_07_diff_1k.jpg';
+const STONE_NORMAL = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/castle_brick_07/castle_brick_07_nor_gl_1k.jpg';
+const STONE_ROUGH = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/castle_brick_07/castle_brick_07_rough_1k.jpg';
+
+const ROOF_COLOR = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_tiles_14/roof_tiles_14_diff_1k.jpg';
+const ROOF_NORMAL = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_tiles_14/roof_tiles_14_nor_gl_1k.jpg';
+const ROOF_ROUGH = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_tiles_14/roof_tiles_14_rough_1k.jpg';
+
+/* Single medieval building: stone wall + dark timber beams + roof tiles */
 function MedievalBuilding({ height, width }) {
   const roofHeight = 1.2;
-  const wallColor = useMemo(() => {
-    const colors = ['#C4A86B', '#B89B5E', '#D4B87A', '#A8905A', '#CFAD6A'];
-    return colors[Math.floor(Math.random() * colors.length)];
-  }, []);
+  const [stoneColor, stoneNormal, stoneRoughness] = useTexture([STONE_COLOR, STONE_NORMAL, STONE_ROUGH]);
+  const [roofColor, roofNormal, roofRoughness] = useTexture([ROOF_COLOR, ROOF_NORMAL, ROOF_ROUGH]);
+
+  useMemo(() => {
+    [stoneColor, stoneNormal, stoneRoughness].forEach((t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(2, 3);
+    });
+    [roofColor, roofNormal, roofRoughness].forEach((t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(2, 1);
+    });
+  }, [stoneColor, stoneNormal, stoneRoughness, roofColor, roofNormal, roofRoughness]);
 
   return (
     <group>
-      {/* Main wall — plaster / stucco */}
-      <mesh position={[0, height / 2, 0]}>
+      {/* Main wall — stone */}
+      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[width, height, 0.6]} />
-        <meshStandardMaterial color={wallColor} roughness={0.9} />
+        <meshStandardMaterial map={stoneColor} normalMap={stoneNormal} roughnessMap={stoneRoughness} roughness={1} metalness={0} />
       </mesh>
 
       {/* Horizontal timber beam — bottom */}
-      <mesh position={[0, 0.15, 0.31]}>
+      <mesh position={[0, 0.15, 0.31]} castShadow receiveShadow>
         <boxGeometry args={[width + 0.1, 0.12, 0.08]} />
         <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
       </mesh>
 
       {/* Horizontal timber beam — middle */}
-      <mesh position={[0, height * 0.5, 0.31]}>
+      <mesh position={[0, height * 0.5, 0.31]} castShadow receiveShadow>
         <boxGeometry args={[width + 0.1, 0.12, 0.08]} />
         <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
       </mesh>
 
       {/* Horizontal timber beam — top */}
-      <mesh position={[0, height - 0.1, 0.31]}>
+      <mesh position={[0, height - 0.1, 0.31]} castShadow receiveShadow>
         <boxGeometry args={[width + 0.1, 0.12, 0.08]} />
         <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
       </mesh>
 
       {/* Vertical timber beam — left */}
-      <mesh position={[-width / 2 + 0.06, height / 2, 0.31]}>
+      <mesh position={[-width / 2 + 0.06, height / 2, 0.31]} castShadow receiveShadow>
         <boxGeometry args={[0.1, height, 0.08]} />
         <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
       </mesh>
 
       {/* Vertical timber beam — right */}
-      <mesh position={[width / 2 - 0.06, height / 2, 0.31]}>
+      <mesh position={[width / 2 - 0.06, height / 2, 0.31]} castShadow receiveShadow>
         <boxGeometry args={[0.1, height, 0.08]} />
         <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
       </mesh>
 
       {/* Vertical timber beam — center */}
-      <mesh position={[0, height / 2, 0.31]}>
+      <mesh position={[0, height / 2, 0.31]} castShadow receiveShadow>
         <boxGeometry args={[0.1, height, 0.08]} />
         <meshStandardMaterial color="#2A1A0C" roughness={0.85} />
       </mesh>
@@ -277,10 +240,10 @@ function MedievalBuilding({ height, width }) {
         <meshStandardMaterial color="#0A0805" roughness={1} />
       </mesh>
 
-      {/* Pitched roof */}
-      <mesh position={[0, height + roofHeight / 2 - 0.1, 0]} rotation={[0, 0, 0]}>
+      {/* Pitched roof — roof tiles */}
+      <mesh position={[0, height + roofHeight / 2 - 0.1, 0]} castShadow receiveShadow>
         <coneGeometry args={[width / 1.4, roofHeight, 4]} />
-        <meshStandardMaterial color="#5C2E0E" roughness={0.85} />
+        <meshStandardMaterial map={roofColor} normalMap={roofNormal} roughnessMap={roofRoughness} roughness={1} metalness={0} />
       </mesh>
     </group>
   );
@@ -461,6 +424,14 @@ function SceneContents({ chains, onStallClick, isLocked, isMobile }) {
         position={[150, 30, -100]}
         intensity={1.2}
         color="#FFD4A0"
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-near={0.5}
+        shadow-camera-far={200}
+        shadow-camera-left={-30}
+        shadow-camera-right={30}
+        shadow-camera-top={30}
+        shadow-camera-bottom={-30}
       />
       <directionalLight
         position={[-5, 10, -3]}
@@ -489,6 +460,15 @@ function SceneContents({ chains, onStallClick, isLocked, isMobile }) {
       ) : (
         <FirstPersonControls isLocked={isLocked} />
       )}
+
+      {/* Post-processing */}
+      <EffectComposer>
+        <SSAO radius={0.05} intensity={20} luminanceInfluence={0.6} color="black" />
+        <Bloom intensity={0.4} luminanceThreshold={0.6} luminanceSmoothing={0.9} mipmapBlur />
+        <Vignette eskil={false} offset={0.2} darkness={0.8} />
+        <HueSaturation saturation={0.15} />
+        <BrightnessContrast brightness={-0.05} contrast={0.1} />
+      </EffectComposer>
     </>
   );
 }
@@ -597,6 +577,7 @@ export default function BazaarScene({ chains = [] }) {
       <Canvas
         camera={{ position: [0, EYE_HEIGHT, 8], fov: 60 }}
         gl={{ antialias: true }}
+        shadows="soft"
       >
         <SceneContents
           chains={chains}

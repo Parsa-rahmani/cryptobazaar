@@ -17,7 +17,7 @@ const TIER_CONFIG = {
   small:  { count: 4,  color: '#F0B90B', emissive: '#F0B90B', emissiveIntensity: 0.1, spread: 0,    light: null },
   medium: { count: 9,  color: '#F0B90B', emissive: '#F0B90B', emissiveIntensity: 0.2, spread: 0.05, light: null },
   large:  { count: 16, color: '#FFD000', emissive: '#FFD000', emissiveIntensity: 0.4, spread: 0.05, light: { intensity: 0.5, color: '#FFD700' } },
-  whale:  { count: 25, color: '#FFD000', emissive: '#FFD000', emissiveIntensity: 0.8, spread: 0.12, light: { intensity: 1.2, color: '#FFD700' } },
+  whale:  { count: 25, color: '#FFD000', emissive: '#FFD000', emissiveIntensity: 2,   spread: 0.12, light: { intensity: 1.2, color: '#FFD700' } },
 };
 
 const COIN_RADIUS = 0.18;

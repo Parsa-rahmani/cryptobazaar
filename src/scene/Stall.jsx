@@ -1,12 +1,40 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useSpring, animated } from '@react-spring/three';
-import { Html } from '@react-three/drei';
+import { Html, useTexture } from '@react-three/drei';
+import * as THREE from 'three';
 import CoinPile from './CoinPile';
 import Merchant from './Merchant';
 import StallLabel from './StallLabel';
 
-const DARK_WOOD = '#3D1F0A';
-const LIGHT_WOOD = '#5C3010';
+const WOOD_COLOR = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/wood_planks_dirt/wood_planks_dirt_diff_1k.jpg';
+const WOOD_NORMAL = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/wood_planks_dirt/wood_planks_dirt_nor_gl_1k.jpg';
+const WOOD_ROUGH = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/wood_planks_dirt/wood_planks_dirt_rough_1k.jpg';
+
+const ROOF_COLOR = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_tiles_14/roof_tiles_14_diff_1k.jpg';
+const ROOF_NORMAL = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_tiles_14/roof_tiles_14_nor_gl_1k.jpg';
+const ROOF_ROUGH = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/roof_tiles_14/roof_tiles_14_rough_1k.jpg';
+
+function useWoodTextures() {
+  const [colorMap, normalMap, roughnessMap] = useTexture([WOOD_COLOR, WOOD_NORMAL, WOOD_ROUGH]);
+  useMemo(() => {
+    [colorMap, normalMap, roughnessMap].forEach((t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(2, 2);
+    });
+  }, [colorMap, normalMap, roughnessMap]);
+  return { colorMap, normalMap, roughnessMap };
+}
+
+function useRoofTextures() {
+  const [colorMap, normalMap, roughnessMap] = useTexture([ROOF_COLOR, ROOF_NORMAL, ROOF_ROUGH]);
+  useMemo(() => {
+    [colorMap, normalMap, roughnessMap].forEach((t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(2, 1);
+    });
+  }, [colorMap, normalMap, roughnessMap]);
+  return { colorMap, normalMap, roughnessMap };
+}
 
 const USD_FMT = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -121,6 +149,26 @@ export default function Stall({ position, rotation, color, chain, onStallClick }
   );
 
   return (
+    <StallInner
+      position={position}
+      rotation={rotation}
+      color={color}
+      chain={chain}
+      onStallClick={onStallClick}
+      hovered={hovered}
+      canopyY={canopyY}
+      handleOver={handleOver}
+      handleOut={handleOut}
+      handleClick={handleClick}
+    />
+  );
+}
+
+function StallInner({ position, rotation, color, chain, hovered, canopyY, handleOver, handleOut, handleClick }) {
+  const wood = useWoodTextures();
+  const roof = useRoofTextures();
+
+  return (
     <group
       position={position}
       rotation={rotation}
@@ -129,50 +177,59 @@ export default function Stall({ position, rotation, color, chain, onStallClick }
       onClick={handleClick}
     >
       {/* ── Booth base ── */}
-      <mesh position={[0, 0.6, 0]}>
+      <mesh position={[0, 0.6, 0]} castShadow receiveShadow>
         <boxGeometry args={[2.2, 1.2, 1]} />
-        <meshStandardMaterial color={DARK_WOOD} roughness={0.85} />
+        <meshStandardMaterial map={wood.colorMap} normalMap={wood.normalMap} roughnessMap={wood.roughnessMap} roughness={1} metalness={0} />
       </mesh>
 
       {/* ── Counter ── */}
-      <mesh position={[0, 1.275, -0.35]}>
+      <mesh position={[0, 1.275, -0.35]} castShadow receiveShadow>
         <boxGeometry args={[2.2, 0.15, 0.3]} />
-        <meshStandardMaterial color={LIGHT_WOOD} roughness={0.75} />
+        <meshStandardMaterial map={wood.colorMap} normalMap={wood.normalMap} roughnessMap={wood.roughnessMap} roughness={1} metalness={0} />
       </mesh>
 
       {/* ── Back wall ── */}
-      <mesh position={[0, 0.9, 0.45]}>
+      <mesh position={[0, 0.9, 0.45]} castShadow receiveShadow>
         <boxGeometry args={[2.2, 1.8, 0.1]} />
-        <meshStandardMaterial color={DARK_WOOD} roughness={0.85} />
+        <meshStandardMaterial map={wood.colorMap} normalMap={wood.normalMap} roughnessMap={wood.roughnessMap} roughness={1} metalness={0} />
       </mesh>
 
       {/* ── Left front pole ── */}
-      <mesh position={[-1.05, 1.2, -0.45]}>
+      <mesh position={[-1.05, 1.2, -0.45]} castShadow receiveShadow>
         <cylinderGeometry args={[0.05, 0.05, 2, 8]} />
-        <meshStandardMaterial color={DARK_WOOD} roughness={0.8} />
+        <meshStandardMaterial map={wood.colorMap} normalMap={wood.normalMap} roughnessMap={wood.roughnessMap} roughness={1} metalness={0} />
       </mesh>
 
       {/* ── Right front pole ── */}
-      <mesh position={[1.05, 1.2, -0.45]}>
+      <mesh position={[1.05, 1.2, -0.45]} castShadow receiveShadow>
         <cylinderGeometry args={[0.05, 0.05, 2, 8]} />
-        <meshStandardMaterial color={DARK_WOOD} roughness={0.8} />
+        <meshStandardMaterial map={wood.colorMap} normalMap={wood.normalMap} roughnessMap={wood.roughnessMap} roughness={1} metalness={0} />
       </mesh>
 
-      {/* ── Canopy (animated y on hover) ── */}
+      {/* ── Canopy (animated y on hover) — roof tiles tinted with chain color ── */}
       <animated.mesh
         position-x={0}
         position-y={canopyY}
         position-z={-0.1}
         rotation={[-0.15, 0, 0]}
+        castShadow
+        receiveShadow
       >
         <boxGeometry args={[2.6, 0.1, 1.4]} />
-        <meshStandardMaterial color={color} roughness={0.6} metalness={0.1} />
+        <meshStandardMaterial
+          map={roof.colorMap}
+          normalMap={roof.normalMap}
+          roughnessMap={roof.roughnessMap}
+          roughness={1}
+          metalness={0}
+          color={color}
+        />
       </animated.mesh>
 
       {/* ── Back pole / canopy support ── */}
-      <mesh position={[0, 2.15, 0.45]}>
+      <mesh position={[0, 2.15, 0.45]} castShadow receiveShadow>
         <boxGeometry args={[2.2, 0.06, 0.1]} />
-        <meshStandardMaterial color={DARK_WOOD} roughness={0.8} />
+        <meshStandardMaterial map={wood.colorMap} normalMap={wood.normalMap} roughnessMap={wood.roughnessMap} roughness={1} metalness={0} />
       </mesh>
 
       {/* ── Coin pile on counter surface ── */}
