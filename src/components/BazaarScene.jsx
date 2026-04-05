@@ -40,8 +40,8 @@ function makeCobblestoneTexture() {
   canvas.height = size;
   const ctx = canvas.getContext('2d');
 
-  // Base mortar color
-  ctx.fillStyle = '#3A332A';
+  // Base mortar color — dark grey grout
+  ctx.fillStyle = '#4A4A4A';
   ctx.fillRect(0, 0, size, size);
 
   // Draw irregular stones in a grid with jitter
@@ -49,7 +49,7 @@ function makeCobblestoneTexture() {
   const rows = 8;
   const cellW = size / cols;
   const cellH = size / rows;
-  const stoneColors = ['#6B6357', '#7A7060', '#5C5549', '#847B6E', '#6E665A', '#79705F', '#635C50', '#8A8070'];
+  const stoneColors = ['#8C8C8C', '#9A9A96', '#7E7E7A', '#A3A39E', '#888884', '#969690', '#7A7A76', '#AEAEA8'];
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -126,19 +126,19 @@ function DuskSky() {
     <>
       <Sky
         distance={450000}
-        sunPosition={[100, 5, -100]}
-        inclination={0.05}
+        sunPosition={[150, 30, -100]}
+        inclination={0.49}
         azimuth={0.25}
-        turbidity={10}
-        rayleigh={2}
-        mieCoefficient={0.005}
-        mieDirectionalG={0.8}
+        turbidity={4}
+        rayleigh={1}
+        mieCoefficient={0.003}
+        mieDirectionalG={0.7}
       />
       <Stars
         radius={80}
         depth={50}
-        count={2000}
-        factor={4}
+        count={1500}
+        factor={3}
         saturation={0}
         fade
         speed={0.5}
@@ -454,9 +454,14 @@ function SceneContents({ chains, onStallClick, isLocked, isMobile }) {
   return (
     <>
       {/* AMBIENT MOOD — fog, dim ambient, moonlight */}
-      <fog attach="fog" args={['#1A0A07', 12, 35]} />
+      <fog attach="fog" args={['#8B7355', 15, 50]} />
 
-      <ambientLight intensity={0.15} color="#FFF3DC" />
+      <ambientLight intensity={0.6} color="#FFF8F0" />
+      <directionalLight
+        position={[150, 30, -100]}
+        intensity={1.2}
+        color="#FFD4A0"
+      />
       <directionalLight
         position={[-5, 10, -3]}
         intensity={0.3}
