@@ -101,38 +101,45 @@ function SpinningCoin({ position, materialProps }) {
   );
 }
 
+/* ─── Error boundary to catch texture load failures ─── */
+class TextureErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
 /* ─── Single coin with optional logo texture on top face ─── */
 function LogoCoin({ position, materialProps, logoUrl, spinning }) {
+  const fallback = spinning
+    ? <SpinningCoin position={position} materialProps={materialProps} />
+    : <PlainCoin position={position} materialProps={materialProps} />;
+
   return (
-    <Suspense fallback={spinning
-      ? <SpinningCoin position={position} materialProps={materialProps} />
-      : <PlainCoin position={position} materialProps={materialProps} />
-    }>
-      <LogoCoinInner position={position} materialProps={materialProps} logoUrl={logoUrl} spinning={spinning} />
-    </Suspense>
+    <TextureErrorBoundary fallback={fallback}>
+      <Suspense fallback={fallback}>
+        <LogoCoinInner position={position} materialProps={materialProps} logoUrl={logoUrl} spinning={spinning} />
+      </Suspense>
+    </TextureErrorBoundary>
   );
 }
 
 function LogoCoinInner({ position, materialProps, logoUrl, spinning }) {
   const ref = useRef();
-  let texture = null;
-  try {
-    texture = useTexture(logoUrl);
-  } catch {
-    // texture stays null
-  }
+  const texture = useTexture(logoUrl);
 
   useFrame(() => {
     if (spinning && ref.current) {
       ref.current.rotation.y += 0.005;
     }
   });
-
-  if (!texture) {
-    return spinning
-      ? <SpinningCoin position={position} materialProps={materialProps} />
-      : <PlainCoin position={position} materialProps={materialProps} />;
-  }
 
   return (
     <mesh ref={ref} position={position}>
